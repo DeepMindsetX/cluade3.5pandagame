@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>熊猫吃竹笋大PK</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #87CEEB;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            border: 2px solid #000;
+        }
+        #uiContainer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            width: 80%;
+            max-width: 600px;
+        }
+        #gameTitle {
+            font-size: 36px;
+            color: #000;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        .button {
+            font-size: 20px;
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin: 10px;
+        }
+        #gameInfo {
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+        #endGameInfo {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <div id="uiContainer">
+        <h1 id="gameTitle">熊猫吃竹笋大PK</h1>
+        <button id="startButton" class="button">开始游戏</button>
+        <div id="gameInfo">
+            <p>你现在是一只熊猫，吃到竹笋 +10 分，吃到鱼 -20 分，吃到炸弹游戏提前结束，<br>
+            快来PK一下，30秒内看看你能得多少分！</p>
+        </div>
+    </div>
+    <div id="endGameInfo">
+        <h2>游戏结束!</h2>
+        <p id="finalScore"></p>
+        <p id="playerRank"></p>
+        <button id="restartButton" class="button">我要再挑战一下</button>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const gameInfo = document.getElementById('gameInfo');
+        const uiContainer = document.getElementById('uiContainer');
+        const endGameInfo = document.getElementById('endGameInfo');
+
+        // 游戏状态
+        let score = 0;
+        let timeLeft = 30;
+        let gameOver = false;
+        let gameStarted = false;
+        let speed = 5;
+
+        // 熊猫
+        const panda = {
+            x: canvas.width / 2,
+            y: canvas.height - 50,
+            width: 60,
+            height: 60
+        };
+
+        // 竹笋、鱼和炸弹
+        let items = [];
+
+        // 特效
+        let effects = [];
+
+        // 加载3D风格图片
+        const pandaImg = new Image();
+        pandaImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MCA1MCI+PHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjZmZmIiByeD0iMTAiLz48Y2lyY2xlIGN4PSIxNSIgY3k9IjIwIiByPSI4IiBmaWxsPSIjMDAwIi8+PGNpcmNsZSBjeD0iMzUiIGN5PSIyMCIgcj0iOCIgZmlsbD0iIzAwMCIvPjxlbGxpcHNlIGN4PSIyNSIgY3k9IjM1IiByeD0iOCIgcnk9IjYiIGZpbGw9IiMwMDAiLz48cGF0aCBkPSJNMjAgNDVIMzBDMzUgNDUgMzUgNTAgMjUgNTBDMTUgNTAgMTUgNDUgMjAgNDVaIiBmaWxsPSIjMDAwIi8+PC9zdmc+';
+
+        const bambooImg = new Image();
+        bambooImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMCA2MCI+PHJlY3QgeD0iMTAiIHk9IjAiIHdpZHRoPSIxMCIgaGVpZ2h0PSI2MCIgZmlsbD0iIzRjYWY1MCIvPjxyZWN0IHg9IjUiIHk9IjEwIiB3aWR0aD0iMjAiIGhlaWdodD0iNSIgZmlsbD0iIzgxYzc4NCIvPjxyZWN0IHg9IjUiIHk9IjMwIiB3aWR0aD0iMjAiIGhlaWdodD0iNSIgZmlsbD0iIzgxYzc4NCIvPjxyZWN0IHg9IjUiIHk9IjUwIiB3aWR0aD0iMjAiIGhlaWdodD0iNSIgZmlsbD0iIzgxYzc4NCIvPjxwYXRoIGQ9Ik0xNSAwQzEwIDAgNSA1IDUgNUgxMEMxMCA1IDEyIDMgMTUgM0MxOCAzIDIwIDUgMjAgNUgyNUMyNSA1IDIwIDAgMTUgMFoiIGZpbGw9IiM0Y2FmNTAiLz48L3N2Zz4=';
+
+        const fishImg = new Image();
+        fishImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2MCAzMCI+PHBhdGggZD0iTTU1IDEwQzUwIDAgMzAgMCAxNSAxMEM1IDIwIDAgMzAgMTUgMzBDMzUgMzAgNTUgMjUgNTUgMTVaIiBmaWxsPSIjMjE5NmYzIi8+PGNpcmNsZSBjeD0iNDUiIGN5PSIxMCIgcj0iMyIgZmlsbD0iI2ZmZiIvPjxwYXRoIGQ9Ik0wIDEwUTEwIDIwIDAgMjBaIiBmaWxsPSIjMjE5NmYzIi8+PC9zdmc+';
+
+        const bombImg = new Image();
+        bombImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA0MCA0MCI+PGNpcmNsZSBjeD0iMjAiIGN5PSIyNSIgcj0iMTUiIGZpbGw9IiMzMjMyMzIiLz48cGF0aCBkPSJNMjAgMEwxOCA1TDIyIDVMMjAgMFpNMjAgNUwyMCAxMEMyMCAxMCAyNSA4IDI1IDVDMjUgNSAyMCA3IDIwIDVaIiBmaWxsPSIjZDMyZjJmIi8+PGNpcmNsZSBjeD0iMjYiIGN5PSIxOCIgcj0iMyIgZmlsbD0iI2ZmZiIgb3BhY2l0eT0iMC4zIi8+PC9zdmc+';
+
+        // 游戏循环
+        function gameLoop() {
+            if (gameStarted && !gameOver) {
+                update();
+                draw();
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // 更新游戏状态
+        function update() {
+            if (Math.random() < 0.05) {
+                items.push({
+                    x: Math.random() * (canvas.width - 30),
+                    y: -30,
+                    type: Math.random() < 0.6 ? 'bamboo' : (Math.random() < 0.9 ? 'fish' : 'bomb')
+                });
+            }
+
+            items = items.filter(item => {
+                item.y += speed;
+                if (item.y > canvas.height) return false;
+                if (collision(panda, item)) {
+                    if (item.type === 'bamboo') {
+                        score += 10;
+                        addEffect('+10', item.x, item.y, '#00ff00');
+                    } else if (item.type === 'fish') {
+                        score -= 20;
+                        addEffect('-20', item.x, item.y, '#ff0000');
+                    } else if (item.type === 'bomb') {
+                        gameOver = true;
+                        addEffect('BOOM!', item.x, item.y, '#ff0000');
+                    }
+                    return false;
+                }
+                return true;
+            });
+
+            effects = effects.filter(effect => {
+                effect.y -= 2;
+                effect.opacity -= 0.02;
+                return effect.opacity > 0;
+            });
+
+            if (timeLeft > 0) {
+                timeLeft -= 1/60;
+            } else {
+                gameOver = true;
+            }
+
+            speed = 5 + Math.floor(score / 50);
+
+            if (gameOver) {
+                endGame();
+            }
+        }
+
+        // 绘制游戏画面
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制背景
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制熊猫
+            ctx.drawImage(pandaImg, panda.x - panda.width/2, panda.y - panda.height/2, panda.width, panda.height);
+
+            // 绘制道具
+            items.forEach(item => {
+                let img;
+                let width, height;
+                switch(item.type) {
+                    case 'bamboo': 
+                        img = bambooImg; 
+                        width = 30; height = 60;
+                        break;
+                    case 'fish': 
+                        img = fishImg; 
+                        width = 60; height = 30;
+                        break;
+                    case 'bomb': 
+                        img = bombImg; 
+                        width = 40; height = 40;
+                        break;
+                }
+                ctx.drawImage(img, item.x - width/2, item.y - height/2, width, height);
+            });
+
+            // 绘制特效
+            effects.forEach(effect => {
+                ctx.fillStyle = effect.color;
+                ctx.font = 'bold 24px Arial';
+                ctx.fillText(effect.text, effect.x, effect.y);
+            });
+
+            // 绘制分数和时间
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText(`得分: ${score}`, canvas.width - 100, 30);
+            ctx.fillText(`时间: ${Math.ceil(timeLeft)}`, 10, 30);
+        }
+
+        // 碰撞检测
+        function collision(a, b) {
+            return a.x - a.width/2 < b.x + 30 &&
+                   a.x + a.width/2 > b.x &&
+                   a.y - a.height/2 < b.y + 30 &&
+                   a.y + a.height/2 > b.y;
+        }
+
+        // 添加特效
+        function addEffect(text, x, y, color) {
+            effects.push({text, x, y, color, opacity: 1});
+        }
+
+        // 鼠标控制
+        canvas.addEventListener('mousemove', (event) => {
+            if (gameStarted && !gameOver) {
+                const rect = canvas.getBoundingClientRect();
+                panda.x = event.clientX - rect.left;
+                panda.x = Math.max(panda.width/2, Math.min(canvas.width - panda.width/2, panda.x));
+            }
+        });
+
+        // 开始游戏
+        function startGame() {
+            gameStarted = true;
+            gameOver = false;
+            score = 0;
+            timeLeft = 30;
+            items = [];
+            effects = [];
+            speed = 5;
+            uiContainer.style.display = 'none';
+            endGameInfo.style.display = 'none';
+            gameLoop();
+        }
+
+        // 结束游戏
+        function endGame() {
+            gameStarted = false;
+            const randomPercentage = Math.floor(Math.random() * 100);
+            document.getElementById('finalScore').textContent = `您的得分为 ${score} 分`;
+            document.getElementById('playerRank').textContent = `超过了全球 ${randomPercentage}% 的玩家`;
+            endGameInfo.style.display = 'block';
+        }
+
+        // 重新开始游戏
+        function restartGame() {
+            startGame();
+        }
+
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', restartGame);
+
+        // 初始化
+        draw();
+    </script>
+</body>
+</html>

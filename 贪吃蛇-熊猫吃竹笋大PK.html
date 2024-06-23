@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>贪吃蛇 - 熊猫吃竹笋大PK</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        #gameUI { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; }
+        #startScreen, #endScreen { background: rgba(0,0,0,0.7); padding: 20px; border-radius: 10px; color: white; }
+        #gameTitle { font-size: 24px; margin-bottom: 20px; }
+        button { font-size: 18px; padding: 10px 20px; margin: 10px; cursor: pointer; }
+        #score { position: absolute; top: 10px; left: 10px; color: white; font-size: 20px; }
+    </style>
+</head>
+<body>
+    <div id="score">分数: 0</div>
+    <div id="gameUI">
+        <div id="startScreen">
+            <h1 id="gameTitle">贪吃蛇 - 熊猫吃竹笋大PK</h1>
+            <button id="startButton">开始游戏</button>
+            <p>这是一个贪吃蛇游戏，尽可能地多得分吧！</p>
+        </div>
+        <div id="endScreen" style="display: none;">
+            <h2>游戏结束</h2>
+            <p id="finalScore"></p>
+            <p id="globalRank"></p>
+            <button id="restartButton">我要再挑战一下</button>
+        </div>
+    </div>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        let scene, camera, renderer, panda, bamboo, snake, score = 0;
+        const gridSize = 20;
+        const cubeSize = 1;
+        let moveInterval;
+        let isGameRunning = false;
+        let gameSpeed = 300; // 初始速度为300毫秒
+
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            renderer = new THREE.WebGLRenderer();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // 创建地面
+            const groundGeometry = new THREE.PlaneGeometry(gridSize, gridSize);
+            const groundMaterial = new THREE.MeshBasicMaterial({ color: 0xb8e3e9, side: THREE.DoubleSide });
+            const ground = new THREE.Mesh(groundGeometry, groundMaterial);
+            ground.rotation.x = Math.PI / 2;
+            scene.add(ground);
+
+            // 创建像素风格熊猫
+            panda = createPixelPanda();
+            scene.add(panda);
+
+            // 创建像素风格竹笋
+            bamboo = createPixelBamboo();
+            repositionBamboo();
+            scene.add(bamboo);
+
+            // 初始化蛇身
+            snake = [panda.position.clone()];
+
+            camera.position.z = 15;
+            camera.position.y = 15;
+            camera.lookAt(scene.position);
+
+            document.addEventListener('keydown', onKeyDown);
+
+            document.getElementById('startButton').addEventListener('click', startGame);
+            document.getElementById('restartButton').addEventListener('click', restartGame);
+        }
+
+        function createPixelPanda() {
+            const pandaGroup = new THREE.Group();
+            
+            // 熊猫身体（白色）
+            const bodyGeometry = new THREE.BoxGeometry(cubeSize, cubeSize, cubeSize);
+            const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0xFFFFFF });
+            const body = new THREE.Mesh(bodyGeometry, bodyMaterial);
+            pandaGroup.add(body);
+
+            // 熊猫眼睛（黑色）
+            const eyeGeometry = new THREE.BoxGeometry(cubeSize * 0.3, cubeSize * 0.3, cubeSize * 0.1);
+            const eyeMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            const leftEye = new THREE.Mesh(eyeGeometry, eyeMaterial);
+            leftEye.position.set(-0.3, 0.3, 0.5);
+            const rightEye = leftEye.clone();
+            rightEye.position.set(0.3, 0.3, 0.5);
+            pandaGroup.add(leftEye, rightEye);
+
+            // 熊猫耳朵（黑色）
+            const earGeometry = new THREE.BoxGeometry(cubeSize * 0.3, cubeSize * 0.3, cubeSize * 0.1);
+            const leftEar = new THREE.Mesh(earGeometry, eyeMaterial);
+            leftEar.position.set(-0.4, 0.5, 0);
+            const rightEar = leftEar.clone();
+            rightEar.position.set(0.4, 0.5, 0);
+            pandaGroup.add(leftEar, rightEar);
+
+            return pandaGroup;
+        }
+
+        function createPixelBamboo() {
+            const bambooGroup = new THREE.Group();
+            
+            // 竹节（绿色）
+            const segmentGeometry = new THREE.BoxGeometry(cubeSize * 0.6, cubeSize, cubeSize * 0.6);
+            const segmentMaterial = new THREE.MeshBasicMaterial({ color: 0x00FF00 });
+            const segment = new THREE.Mesh(segmentGeometry, segmentMaterial);
+            bambooGroup.add(segment);
+
+            // 竹叶（深绿色）
+            const leafGeometry = new THREE.BoxGeometry(cubeSize * 0.4, cubeSize * 0.2, cubeSize * 0.1);
+            const leafMaterial = new THREE.MeshBasicMaterial({ color: 0x008000 });
+            const leaf1 = new THREE.Mesh(leafGeometry, leafMaterial);
+            leaf1.position.set(0.4, 0.4, 0);
+            leaf1.rotation.z = Math.PI / 4;
+            const leaf2 = leaf1.clone();
+            leaf2.position.set(-0.4, 0.2, 0);
+            leaf2.rotation.z = -Math.PI / 4;
+            bambooGroup.add(leaf1, leaf2);
+
+            return bambooGroup;
+        }
+
+        function onKeyDown(event) {
+            if (!isGameRunning) return;
+            switch(event.keyCode) {
+                case 37: // 左
+                    if (panda.userData.direction !== 'right') panda.userData.direction = 'left';
+                    break;
+                case 38: // 上
+                    if (panda.userData.direction !== 'down') panda.userData.direction = 'up';
+                    break;
+                case 39: // 右
+                    if (panda.userData.direction !== 'left') panda.userData.direction = 'right';
+                    break;
+                case 40: // 下
+                    if (panda.userData.direction !== 'up') panda.userData.direction = 'down';
+                    break;
+            }
+        }
+
+        function startGame() {
+            isGameRunning = true;
+            score = 0;
+            gameSpeed = 300; // 重置游戏速度
+            document.getElementById('score').textContent = `分数: ${score}`;
+            document.getElementById('startScreen').style.display = 'none';
+            document.getElementById('endScreen').style.display = 'none';
+            
+            // 重置蛇的位置和方向
+            panda.position.set(0, 0.5, 0);
+            snake = [panda.position.clone()];
+            panda.userData.direction = 'right';
+
+            repositionBamboo();
+            startMoving();
+        }
+
+        function startMoving() {
+            clearInterval(moveInterval);
+            moveInterval = setInterval(() => {
+                moveSnake(panda.userData.direction);
+            }, gameSpeed);
+        }
+
+        function moveSnake(direction) {
+            const newHead = panda.position.clone();
+            switch(direction) {
+                case 'left':
+                    newHead.x -= cubeSize;
+                    break;
+                case 'right':
+                    newHead.x += cubeSize;
+                    break;
+                case 'up':
+                    newHead.z -= cubeSize;
+                    break;
+                case 'down':
+                    newHead.z += cubeSize;
+                    break;
+            }
+
+            // 检查是否吃到竹笋
+            if (newHead.distanceTo(bamboo.position) < cubeSize) {
+                score++;
+                document.getElementById('score').textContent = `分数: ${score}`;
+                snake.push(snake[snake.length - 1].clone());
+                repositionBamboo();
+
+                // 每得3分，增加一次速度
+                if (score % 3 === 0) {
+                    gameSpeed = Math.max(50, gameSpeed - 20); // 最快速度为50毫秒
+                    startMoving(); // 重新设置移动间隔
+                }
+            } else {
+                snake.pop();
+            }
+
+            snake.unshift(newHead);
+            panda.position.copy(newHead);
+
+            // 检查游戏结束条件
+            if (isGameOver()) {
+                endGame();
+            }
+
+            // 更新蛇身
+            updateSnakeBody();
+        }
+
+        function isGameOver() {
+            // 检查是否撞墙
+            if (
+                panda.position.x < -gridSize/2 || panda.position.x > gridSize/2 ||
+                panda.position.z < -gridSize/2 || panda.position.z > gridSize/2
+            ) {
+                return true;
+            }
+
+            // 检查是否撞到自己
+            for (let i = 1; i < snake.length; i++) {
+                if (panda.position.distanceTo(snake[i]) < 0.1) {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        function endGame() {
+            isGameRunning = false;
+            clearInterval(moveInterval);
+            const randomPercentage = Math.floor(Math.random() * 100);
+            document.getElementById('finalScore').textContent = `您的得分为 ${score} 分`;
+            document.getElementById('globalRank').textContent = `超过了全球 ${randomPercentage}% 的玩家`;
+            document.getElementById('endScreen').style.display = 'block';
+        }
+
+        function restartGame() {
+            // 清除旧的蛇身
+            scene.children.forEach(child => {
+                if (child.isCubeSnakeBody) {
+                    scene.remove(child);
+                }
+            });
+            startGame();
+        }
+
+        function repositionBamboo() {
+            bamboo.position.set(
+                Math.floor(Math.random() * (gridSize - 2) - (gridSize / 2 - 1)),
+                0.5,
+                Math.floor(Math.random() * (gridSize - 2) - (gridSize / 2 - 1))
+            );
+        }
+
+        function updateSnakeBody() {
+            // 移除旧的蛇身
+            scene.children.forEach(child => {
+                if (child.isCubeSnakeBody) {
+                    scene.remove(child);
+                }
+            });
+
+            // 添加新的蛇身
+            for (let i = 1; i < snake.length; i++) {
+                const bodyGeometry = new THREE.BoxGeometry(cubeSize * 0.9, cubeSize * 0.9, cubeSize * 0.9);
+                const bodyMaterial = new THREE.MeshBasicMaterial({ color: 0x808080 });
+                const bodySegment = new THREE.Mesh(bodyGeometry, bodyMaterial);
+                bodySegment.position.copy(snake[i]);
+                bodySegment.isCubeSnakeBody = true;
+                scene.add(bodySegment);
+            }
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            renderer.render(scene, camera);
+        }
+
+        init();
+        animate();
+    </script>
+</body>
+</html>

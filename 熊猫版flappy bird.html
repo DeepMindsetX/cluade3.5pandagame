@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>熊猫版Flappy Bird</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #87CEEB;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            border: 2px solid #000;
+        }
+        #uiContainer {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            width: 80%;
+            max-width: 600px;
+        }
+        #gameTitle {
+            font-size: 36px;
+            color: #000;
+            margin-bottom: 20px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+        }
+        .button {
+            font-size: 20px;
+            padding: 10px 20px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            margin: 10px;
+        }
+        #gameInfo {
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            font-size: 16px;
+            line-height: 1.5;
+        }
+        #endGameInfo {
+            display: none;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            width: 80%;
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="450"></canvas>
+    <div id="uiContainer">
+        <h1 id="gameTitle">熊猫版Flappy Bird</h1>
+        <button id="startButton" class="button">开始游戏</button>
+        <div id="gameInfo">
+            <p>点击屏幕熊猫上升，点的越快，上升越快，不点时自由落体，尽可能地多得分吧！</p>
+        </div>
+    </div>
+    <div id="endGameInfo">
+        <h2>游戏结束!</h2>
+        <p id="finalScore"></p>
+        <p id="playerRank"></p>
+        <button id="restartButton" class="button">我要再挑战一下</button>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const uiContainer = document.getElementById('uiContainer');
+        const endGameInfo = document.getElementById('endGameInfo');
+
+        // 游戏状态
+        let gameStarted = false;
+        let gameOver = false;
+        let score = 0;
+        let gravity = 0.25;
+        let jumpForce = -6;
+        let pipeGap = 200;
+        let pipeWidth = 80;
+        let pipes = [];
+        let gameStartDelay = 500;  // 0.5秒延迟
+        let gameSpeed = 2;
+
+        // 熊猫
+        const panda = {
+            x: 100,
+            y: canvas.height / 2,
+            width: 60,
+            height: 60,
+            velocity: 0
+        };
+
+        // 加载3D风格图片
+        const pandaImg = new Image();
+        pandaImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA1MCA1MCI+PHJlY3Qgd2lkdGg9IjUwIiBoZWlnaHQ9IjUwIiBmaWxsPSIjZmZmIiByeD0iMTAiLz48Y2lyY2xlIGN4PSIxNSIgY3k9IjIwIiByPSI4IiBmaWxsPSIjMDAwIi8+PGNpcmNsZSBjeD0iMzUiIGN5PSIyMCIgcj0iOCIgZmlsbD0iIzAwMCIvPjxlbGxpcHNlIGN4PSIyNSIgY3k9IjM1IiByeD0iOCIgcnk9IjYiIGZpbGw9IiMwMDAiLz48cGF0aCBkPSJNMjAgNDVIMzBDMzUgNDUgMzUgNTAgMjUgNTBDMTUgNTAgMTUgNDUgMjAgNDVaIiBmaWxsPSIjMDAwIi8+PC9zdmc+';
+
+        const bambooImg = new Image();
+        bambooImg.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAzMCA2MCI+PHJlY3QgeD0iMTAiIHk9IjAiIHdpZHRoPSIxMCIgaGVpZ2h0PSI2MCIgZmlsbD0iIzRjYWY1MCIvPjxyZWN0IHg9IjUiIHk9IjEwIiB3aWR0aD0iMjAiIGhlaWdodD0iNSIgZmlsbD0iIzgxYzc4NCIvPjxyZWN0IHg9IjUiIHk9IjMwIiB3aWR0aD0iMjAiIGhlaWdodD0iNSIgZmlsbD0iIzgxYzc4NCIvPjxyZWN0IHg9IjUiIHk9IjUwIiB3aWR0aD0iMjAiIGhlaWdodD0iNSIgZmlsbD0iIzgxYzc4NCIvPjxwYXRoIGQ9Ik0xNSAwQzEwIDAgNSA1IDUgNUgxMEMxMCA1IDEyIDMgMTUgM0MxOCAzIDIwIDUgMjAgNUgyNUMyNSA1IDIwIDAgMTUgMFoiIGZpbGw9IiM0Y2FmNTAiLz48L3N2Zz4=';
+
+        function gameLoop() {
+            update();
+            draw();
+            if (!gameOver) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        function update() {
+            if (gameStarted && !gameOver) {
+                // 更新熊猫位置
+                panda.velocity += gravity;
+                panda.y += panda.velocity;
+
+                // 检查碰撞
+                if (panda.y + panda.height > canvas.height || panda.y < 0) {
+                    gameOver = true;
+                }
+
+                // 更新管道
+                pipes.forEach(pipe => {
+                    pipe.x -= gameSpeed;
+                    if (pipe.x + pipeWidth < 0) {
+                        pipes.shift();
+                        score++;
+                        // 每5分增加难度
+                        if (score % 5 === 0) {
+                            increaseDifficulty();
+                        }
+                    }
+                    if (collision(panda, pipe)) {
+                        gameOver = true;
+                    }
+                });
+
+                // 添加新管道
+                if (pipes.length === 0 || pipes[pipes.length - 1].x < canvas.width - 300) {
+                    addPipe();
+                }
+            }
+
+            if (gameOver) {
+                endGame();
+            }
+        }
+
+        function draw() {
+            // 清空画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制背景
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // 绘制熊猫
+            ctx.drawImage(pandaImg, panda.x, panda.y, panda.width, panda.height);
+
+            // 绘制管道
+            pipes.forEach(pipe => {
+                ctx.drawImage(bambooImg, pipe.x, 0, pipeWidth, pipe.top);
+                ctx.drawImage(bambooImg, pipe.x, pipe.bottom, pipeWidth, canvas.height - pipe.bottom);
+            });
+
+            // 绘制分数
+            ctx.fillStyle = '#000';
+            ctx.font = 'bold 20px Arial';
+            ctx.fillText(`得分: ${score}`, 10, 30);
+        }
+
+        function collision(panda, pipe) {
+            return panda.x < pipe.x + pipeWidth &&
+                   panda.x + panda.width > pipe.x &&
+                   (panda.y < pipe.top || panda.y + panda.height > pipe.bottom);
+        }
+
+        function addPipe() {
+            const gapStart = Math.random() * (canvas.height - pipeGap - 100) + 50;
+            pipes.push({
+                x: canvas.width,
+                top: gapStart,
+                bottom: gapStart + pipeGap
+            });
+        }
+
+        function startGame() {
+            gameStarted = false;
+            gameOver = false;
+            score = 0;
+            panda.y = canvas.height / 2;
+            panda.velocity = 0;
+            pipes = [];
+            gameSpeed = 2;
+            gravity = 0.25;
+            pipeGap = 200;
+            uiContainer.style.display = 'none';
+            endGameInfo.style.display = 'none';
+            
+            setTimeout(() => {
+                gameStarted = true;
+                gameLoop();
+            }, gameStartDelay);
+        }
+
+        function endGame() {
+            gameStarted = false;
+            const randomPercentage = Math.floor(Math.random() * 100);
+            document.getElementById('finalScore').textContent = `您的得分为 ${score} 分`;
+            document.getElementById('playerRank').textContent = `超过了全球 ${randomPercentage}% 的玩家`;
+            endGameInfo.style.display = 'block';
+        }
+
+        function jump() {
+            if (gameStarted && !gameOver) {
+                panda.velocity = jumpForce;
+            }
+        }
+
+        function increaseDifficulty() {
+            gameSpeed += 0.5;
+            gravity += 0.05;
+            pipeGap = Math.max(120, pipeGap - 10);
+        }
+
+        startButton.addEventListener('click', startGame);
+        restartButton.addEventListener('click', () => {
+            setTimeout(startGame, gameStartDelay);
+        });
+        canvas.addEventListener('click', jump);
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            jump();
+        });
+
+        // 初始绘制
+        draw();
+    </script>
+</body>
+</html>
